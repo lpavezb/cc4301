@@ -39,127 +39,32 @@ LA-CC-04-094
 #include <sexp_ops.h>
 #include <string.h>
 
-typedef struct dict {
-    char varname[255];
-    sexp_t *valexp;
-    struct dict *next;
-} dict_t;
-
-/**
- * lookup a variable.  if we find it, return it.  Otherwise
- * return null.
- */
-sexp_t *lookup(char *varname, dict_t *d) {
-    sexp_t *ret = NULL;
-    dict_t *_d = d;
-
-    printf("Lookup : %s\n",varname);
-
-    while (_d != NULL) {
-        if (strcmp(varname,_d->varname) == 0) {
-            ret = _d->valexp;
-            break;
-        }
-        _d = _d->next;
-    }
-
-    return ret;
-}
-
-/**
- * insert a variable into the dictionary
- */
-dict_t *insert(char *varname, sexp_t *val, dict_t *d) {
-    dict_t *_d = d;
-    char dbgbuf[BUFSIZ];
-
-    printf("Inserting %s into dictionary.\n",varname);
-    print_sexp(dbgbuf,BUFSIZ,val);
-    printf("%s value is : %s\n",varname,dbgbuf);
-
-    if (_d == NULL) {
-        /* empty dictionary -- create one entry and return */
-        _d = (dict_t *)malloc(sizeof(dict_t));
-        _d->valexp = val;
-        strcpy(_d->varname,varname);
-        _d->next = NULL;
-    } else {
-        /* not empty, so first see if the name is already used.
-           If so, purge the expression that was there and replace it. */
-        while (1) {
-            if (strcmp(_d->varname,varname) == 0) {
-                destroy_sexp(_d->valexp);
-                _d->valexp = val;
-                return d;
-            }
-
-            /* if we're at the end with nothing left, break out of the loop */
-            if (_d->next == NULL) break;
-                _d = _d->next;
-        }
-
-        /* we're at the end, so tack on one entry for the value we want
-           to add. */     
-        _d->next = (dict_t *)malloc(sizeof(dict_t));
-        _d->next->valexp = val;
-        strcpy(_d->next->varname,varname);
-        _d->next->next = NULL;
-        return d;
-    }
-
-    return _d;
-}
-
-/**
- * look up an entry and purge it -- not done yet
- */
-dict_t *purge(char *varname, dict_t *d) {
-    /* find an entry and purge it */
-    return d;
-}
-
-/**
- * purge all entries in the dictionary and free the dictionary itself.
- */
-void purge_all(dict_t *d) {
-    dict_t *_d = d;
-    dict_t *td;
-
-    while (_d != NULL) {
-    td = _d->next;
-    printf("PURGING: %s\n",_d->varname);
-    destroy_sexp(_d->valexp);
-    free(_d);
-    _d = td;
-    }
-}
-
 
 /******************
    eval function
 *******************/
+int fun_num = 0;
 int reg_num = 0;
 int label = 0;
-dict_t *eval(sexp_t *exp, dict_t *env, FILE *out) {
+void eval(sexp_t *exp, FILE *out) {
     char *v;
-    dict_t *d = env;
-    sexp_t *tmpsx, *tmpsx2;
 
     /**
     * values understood here: 
-    *   setq
-    *   circle
-    *   point
-    *   section
-    *   draw
-    *   segment
+    *   INT_CONST
+    *   ADD
+    *   SUB
+    *   FUN
+    *   RETURN
+    *   APPLY
+    *   IF0
     */
     if (exp->ty == SEXP_LIST) {
         if (exp->list->ty == SEXP_VALUE)
             v = exp->list->val;
-        else return env;
-    } else return env;
-
+        else return;
+    } else return;
+    
     if (strcmp(v,"INT_CONST") == 0) {
         char *s = exp->list->next->val; // valor de la nueva constante
         char reg[4];
@@ -201,7 +106,7 @@ dict_t *eval(sexp_t *exp, dict_t *env, FILE *out) {
         printf("\tstmfd r13!, {%s}\n",reg2);
         // al final reg_num queda 1 mas que los registros utilizados
         // por ejemplo si solo se esta usando r0, entonces reg_num = 1
-    } else{
+    } else if (strcmp(v,"IF0") == 0) {
         reg_num--; // se vuelve al ultimo registro utilizado
         if(reg_num < 0){
             printf("Error: Debe haber al menos 1 valor en la pila\n");
@@ -214,7 +119,7 @@ dict_t *eval(sexp_t *exp, dict_t *env, FILE *out) {
         printf("\tBEQ .L%d\n", label); // salta a .L{label} cuando r{reg_num} == 0
         sexp_t *lista1 = exp->list->next->next->list;
         while(lista1 != NULL){ 		//
-            eval(lista1, env, out); // ejecuta lista de instrucciones cuando r{reg_num} != 0
+            eval(lista1, out);      // ejecuta lista de instrucciones cuando r{reg_num} != 0
             lista1 = lista1->next;  //
         }
         printf("\tB .L%d\n", label+1); // salta a final del IF despues de ejecutar las instrucciones
@@ -223,13 +128,56 @@ dict_t *eval(sexp_t *exp, dict_t *env, FILE *out) {
         label++;
         sexp_t *lista2 = exp->list->next->list;
         while(lista2 != NULL){		//
-            eval(lista2, env, out); // ejecuta lista de instrucciones cuando r{reg_num} == 0
+            eval(lista2, out);      // ejecuta lista de instrucciones cuando r{reg_num} == 0
             lista2 = lista2->next;	//
         }
         printf(".L%d:\n", label);	// crea etiqueta .L{label+1}
         label++;
+    } else if (strcmp(v,"FUN") == 0) {
+        reg_num--; // se vuelve al ultimo registro utilizado
+        if(reg_num < 0){
+            printf("Error: Debe haber al menos 1 valor en la pila\n"); // argumento de la funcion
+            exit(0);
+        }
+        char reg[4];
+        sprintf(reg, "r%d", reg_num); // registro a utilizar (r{reg_num})
+        printf("\tldr %s, =.FUN%d\n",reg, fun_num); // desapila elemento
+    } else { // if (strcmp(v,"RETURN") == 0) {
+        printf("RETURN\n");
     }
-    return d;
+
+}
+
+void evalFun(sexp_t *exp, FILE *out) {
+    char *v;
+
+    /**
+    * values understood here: 
+    *   FUN
+    */
+    if (exp->ty == SEXP_LIST) {
+        if (exp->list->ty == SEXP_VALUE)
+            v = exp->list->val;
+        else return;
+    } else return;
+
+    if (strcmp(v,"FUN") == 0) {
+        reg_num++; // argumento
+        printf(".FUN%d:\n", fun_num); // escribe etiqueta para funcion
+        fun_num++;
+        sexp_t *lista2 = exp->list->next->list;
+        while(lista2 != NULL){     //
+            v = lista2->list->val;
+            if(strcmp(v,"FUN") == 0 or strcmp(v,"RETURN") == 0)
+                evalFun(lista2, out);
+            else
+                eval(lista2, out);    // ejecuta lista de instrucciones cuando r{reg_num} == 0
+            //printf("%s\n", lista2->list->val);
+            lista2 = lista2->next;  //
+        }
+    } else { //if (strcmp(v,"RETURN") == 0) {
+        printf("\tjump to main\n");
+    }
 }
 
 /****
@@ -240,12 +188,11 @@ int main(int argc, char **argv) {
     FILE *fp, *out;
     char *status;
     sexp_t *sx;
-    dict_t *env = NULL;
 
     if (argc == 2)
         fp = fopen(argv[1],"r+");
     else
-        fp = fopen("test1.in","r+");
+        fp = fopen("test2.in","r+");
     out = fopen("arm.s","w+");
 
     printf(".data\n");
@@ -253,10 +200,7 @@ int main(int argc, char **argv) {
     printf("%s","\t.ascii \"%d\\n\"\n");
     printf(".text\n");
     printf(".global main\n");
-    printf("main: \n");
-    printf("\tstmfd sp!, {fp,lr}\n");
-
-
+    
     while (1) {
         status = fgets(linebuf,BUFSIZ,fp);
 
@@ -271,20 +215,49 @@ int main(int argc, char **argv) {
         sx = parse_sexp(linebuf,BUFSIZ);
         print_sexp(linebuf,BUFSIZ,sx);
 
-        env = eval(sx,env,out);
+        evalFun(sx, out);
 
         destroy_sexp(sx);
 
         fflush(stderr);
     }
 
-    //Final del programa (cierre y mostrar en pantalla)
-    printf("\tldmfd r13!, {r1}\n");
-    printf("\tldr r0, =string\n");
-    printf("\tbl printf\n");
-    printf("\tldmfd sp!, {fp, pc}\n");
+    if (argc == 2)
+        fp = fopen(argv[1],"r+");
+    else
+        fp = fopen("test2.in","r+");
 
-    purge_all(env);
+    printf("main: \n");
+    printf("\tstmfd sp!, {fp,lr}\n");
+    reg_num = 0;
+    fun_num = 0;
+    while (1) {
+        status = fgets(linebuf,BUFSIZ,fp);
+
+        if (feof(fp) != 0) break;
+
+        /* if not EOF and status was NULL, something bad happened. */
+        if (status != linebuf) {
+            printf("Error encountered on fgets.\n");
+            exit(EXIT_FAILURE);
+        }
+
+        sx = parse_sexp(linebuf,BUFSIZ);
+        print_sexp(linebuf,BUFSIZ,sx);
+
+        eval(sx, out);
+
+        destroy_sexp(sx);
+
+        fflush(stderr);
+    }
+
+    //final del programa
+    printf("\tldmfd r13!, {r1}\n");     // desapilar ultimo elemento
+    printf("\tldr r0, =string\n");      //
+    printf("\tbl printf\n");            // mostrar elemento en pantalla
+    printf("\tldmfd sp!, {fp, pc}\n");  //
+
     sexp_cleanup();
 
     fclose(fp);
