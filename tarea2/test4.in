@@ -1,0 +1,5 @@
+(INT_CONST 3) 
+(INT_CONST 8) 
+(ADD) 
+(INT_CONST 6)
+(ADD)
