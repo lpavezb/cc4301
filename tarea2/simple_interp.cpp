@@ -44,7 +44,8 @@ LA-CC-04-094
    eval function
 *******************/
 int fun_num = 0;
-int reg_num = 0;
+int reg_num = 5;
+int fun_ret = 0;
 int label = 0;
 void eval(sexp_t *exp, FILE *out) {
     char *v;
@@ -134,16 +135,20 @@ void eval(sexp_t *exp, FILE *out) {
         printf(".L%d:\n", label);	// crea etiqueta .L{label+1}
         label++;
     } else if (strcmp(v,"FUN") == 0) {
-        reg_num--; // se vuelve al ultimo registro utilizado
-        if(reg_num < 0){
-            printf("Error: Debe haber al menos 1 valor en la pila\n"); // argumento de la funcion
-            exit(0);
-        }
         char reg[4];
         sprintf(reg, "r%d", reg_num); // registro a utilizar (r{reg_num})
-        printf("\tldr %s, =.FUN%d\n",reg, fun_num); // desapila elemento
-    } else { // if (strcmp(v,"RETURN") == 0) {
-        printf("RETURN\n");
+        printf("\tldr %s, = .FUN%d\n",reg, fun_num); // desapila elemento
+        printf("\tstmfd r13!, {%s}\n",reg); // pushea registro con puntero a funcion
+        reg_num++; // se utilizo un registro
+    } else if (strcmp(v,"APPLY") == 0) {
+        char reg1[4];
+        char reg2[4];
+        sprintf(reg1, "r%d", reg_num);
+        sprintf(reg2, "r%d", reg_num+1);
+        printf("\tldmfd r13!, {%s, %s}\n", reg1, reg2);
+        printf("\tstmfd r13!, {%s}\n",reg1);
+        printf("\tbx %s\n",reg2);
+        printf(".RET%d:\n",fun_ret);
     }
 
 }
@@ -170,13 +175,16 @@ void evalFun(sexp_t *exp, FILE *out) {
             v = lista2->list->val;
             if(strcmp(v,"FUN") == 0 or strcmp(v,"RETURN") == 0)
                 evalFun(lista2, out);
-            else
+            else{
                 eval(lista2, out);    // ejecuta lista de instrucciones cuando r{reg_num} == 0
+            }
             //printf("%s\n", lista2->list->val);
             lista2 = lista2->next;  //
         }
-    } else { //if (strcmp(v,"RETURN") == 0) {
-        printf("\tjump to main\n");
+    } else if (strcmp(v,"RETURN") == 0) {
+    	//printf("\tldmfd r13!, {r0}\n"); // desapilar ultimo elemento
+        printf("\tb .RET%d\n", fun_ret);
+        fun_ret++;
     }
 }
 
@@ -231,6 +239,7 @@ int main(int argc, char **argv) {
     printf("\tstmfd sp!, {fp,lr}\n");
     reg_num = 0;
     fun_num = 0;
+    fun_ret = 0;
     while (1) {
         status = fgets(linebuf,BUFSIZ,fp);
 
