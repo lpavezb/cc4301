@@ -44,7 +44,7 @@ LA-CC-04-094
    eval function
 *******************/
 int fun_num = 0;
-int reg_num = 5;
+int reg_num = 0;
 int fun_ret = 0;
 int label = 0;
 void eval(sexp_t *exp, FILE *out) {
@@ -119,7 +119,7 @@ void eval(sexp_t *exp, FILE *out) {
         printf("\tcmp %s, #0\n", reg); // compara registro con 0
         printf("\tBEQ .L%d\n", label); // salta a .L{label} cuando r{reg_num} == 0
         sexp_t *lista1 = exp->list->next->next->list;
-        while(lista1 != NULL){ 		//
+        while(lista1 != NULL){      //
             eval(lista1, out);      // ejecuta lista de instrucciones cuando r{reg_num} != 0
             lista1 = lista1->next;  //
         }
@@ -128,17 +128,24 @@ void eval(sexp_t *exp, FILE *out) {
         reg_num--; // se vuelve al ultimo registro utilizado
         label++;
         sexp_t *lista2 = exp->list->next->list;
-        while(lista2 != NULL){		//
+        while(lista2 != NULL){      //
             eval(lista2, out);      // ejecuta lista de instrucciones cuando r{reg_num} == 0
-            lista2 = lista2->next;	//
+            lista2 = lista2->next;  //
         }
-        printf(".L%d:\n", label);	// crea etiqueta .L{label+1}
+        printf(".L%d:\n", label);   // crea etiqueta .L{label+1}
         label++;
     } else if (strcmp(v,"FUN") == 0) {
         char reg[4];
         sprintf(reg, "r%d", reg_num); // registro a utilizar (r{reg_num})
         printf("\tldr %s, = .FUN%d\n",reg, fun_num); // desapila elemento
         printf("\tstmfd r13!, {%s}\n",reg); // pushea registro con puntero a funcion
+        sexp_t *lista = exp->list->next->list;
+        while(lista != NULL){      //
+            if (strcmp(lista->list->val,"FUN") == 0) 
+                fun_ret++;
+            lista = lista->next;  //
+        }
+        fun_num++;
         reg_num++; // se utilizo un registro
     } else if (strcmp(v,"APPLY") == 0) {
         char reg1[4];
@@ -149,6 +156,7 @@ void eval(sexp_t *exp, FILE *out) {
         printf("\tstmfd r13!, {%s}\n",reg1);
         printf("\tbx %s\n",reg2);
         printf(".RET%d:\n",fun_ret);
+        fun_ret++;
     }
 
 }
@@ -175,14 +183,12 @@ void evalFun(sexp_t *exp, FILE *out) {
             v = lista2->list->val;
             if(strcmp(v,"FUN") == 0 or strcmp(v,"RETURN") == 0)
                 evalFun(lista2, out);
-            else{
-                eval(lista2, out);    // ejecuta lista de instrucciones cuando r{reg_num} == 0
-            }
-            //printf("%s\n", lista2->list->val);
+            else
+                eval(lista2, out);    // ejecuta lista de instrucciones cuando r{reg_num} == 0 
             lista2 = lista2->next;  //
         }
     } else if (strcmp(v,"RETURN") == 0) {
-    	//printf("\tldmfd r13!, {r0}\n"); // desapilar ultimo elemento
+        //printf("\tldmfd r13!, {r0}\n"); // desapilar ultimo elemento
         printf("\tb .RET%d\n", fun_ret);
         fun_ret++;
     }
@@ -237,9 +243,10 @@ int main(int argc, char **argv) {
 
     printf("main: \n");
     printf("\tstmfd sp!, {fp,lr}\n");
-    reg_num = 0;
     fun_num = 0;
+    reg_num = 0;
     fun_ret = 0;
+    label = 0;
     while (1) {
         status = fgets(linebuf,BUFSIZ,fp);
 
